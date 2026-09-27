@@ -18,6 +18,7 @@ import (
 	"net"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -35,23 +36,25 @@ func (c *testStreamConn) Close() error {
 }
 
 func TestRelayClosesStalledHalfClosedConnections(t *testing.T) {
-	left, leftPeer := net.Pipe()
-	leftPeer.Close()
-	right, rightPeer := net.Pipe()
-	defer rightPeer.Close()
-	leftConn := &testStreamConn{Conn: left}
-	rightConn := &testStreamConn{Conn: right}
-	start := time.Now()
+	synctest.Test(t, func(t *testing.T) {
+		left, leftPeer := net.Pipe()
+		leftPeer.Close()
+		right, rightPeer := net.Pipe()
+		defer rightPeer.Close()
+		leftConn := &testStreamConn{Conn: left}
+		rightConn := &testStreamConn{Conn: right}
+		start := time.Now()
 
-	relayWithHalfCloseTimeout(leftConn, rightConn, 10*time.Millisecond)
+		relay(leftConn, rightConn, halfCloseTimeout)
 
-	if elapsed := time.Since(start); elapsed > time.Second {
-		t.Fatalf("relay took %v after a stalled half-close", elapsed)
-	}
-	if got := leftConn.closeCount.Load(); got != 1 {
-		t.Errorf("left connection close count = %d, want 1", got)
-	}
-	if got := rightConn.closeCount.Load(); got != 1 {
-		t.Errorf("right connection close count = %d, want 1", got)
-	}
+		if elapsed := time.Since(start); elapsed != halfCloseTimeout {
+			t.Fatalf("relay took %v after a stalled half-close", elapsed)
+		}
+		if got := leftConn.closeCount.Load(); got != 1 {
+			t.Errorf("left connection close count = %d, want 1", got)
+		}
+		if got := rightConn.closeCount.Load(); got != 1 {
+			t.Errorf("right connection close count = %d, want 1", got)
+		}
+	})
 }

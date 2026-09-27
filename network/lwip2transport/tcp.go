@@ -25,7 +25,9 @@ import (
 )
 
 // halfCloseTimeout limits how long a peer can leave a relay half-closed.
-const halfCloseTimeout = 30 * time.Second
+// Match FreeBSD's default 60-second FIN_WAIT_2 timeout for orphaned sockets:
+// https://man.freebsd.org/cgi/man.cgi?query=tcp (fast_finwait2_recycle).
+const halfCloseTimeout = 60 * time.Second
 
 // Compilation guard against interface implementation
 var _ lwip.TCPConnHandler = (*tcpHandler)(nil)
@@ -45,7 +47,7 @@ func (h *tcpHandler) Handle(conn net.Conn, target *net.TCPAddr) error {
 		return err
 	}
 	// TODO: Request upstream to make `conn` a `core.TCPConn` so we can avoid this type assertion.
-	go relay(conn.(lwip.TCPConn), proxyConn)
+	go relay(conn.(lwip.TCPConn), proxyConn, halfCloseTimeout)
 	return nil
 }
 
@@ -68,11 +70,7 @@ func copyOneWay(leftConn, rightConn transport.StreamConn) (int64, error) {
 // bytes copied from right to left, from left to right, and any error occurred.
 // Relay allows for half-closed connections: if one side is done writing, it can
 // still read all remaining data from its peer.
-func relay(leftConn, rightConn transport.StreamConn) (int64, int64, error) {
-	return relayWithHalfCloseTimeout(leftConn, rightConn, halfCloseTimeout)
-}
-
-func relayWithHalfCloseTimeout(leftConn, rightConn transport.StreamConn, timeout time.Duration) (int64, int64, error) {
+func relay(leftConn, rightConn transport.StreamConn, timeout time.Duration) (int64, int64, error) {
 	type res struct {
 		N   int64
 		Err error
