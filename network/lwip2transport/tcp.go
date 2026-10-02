@@ -24,21 +24,17 @@ import (
 	"golang.getoutline.org/sdk/transport"
 )
 
-// halfCloseTimeout limits how long a peer can leave a relay half-closed.
-// Match FreeBSD's default 60-second FIN_WAIT_2 timeout for orphaned sockets:
-// https://man.freebsd.org/cgi/man.cgi?query=tcp (fast_finwait2_recycle).
-const halfCloseTimeout = 60 * time.Second
-
 // Compilation guard against interface implementation
 var _ lwip.TCPConnHandler = (*tcpHandler)(nil)
 
 type tcpHandler struct {
-	dialer transport.StreamDialer
+	dialer           transport.StreamDialer
+	halfCloseTimeout time.Duration
 }
 
 // newTCPHandler returns a Shadowsocks lwIP connection handler.
-func newTCPHandler(client transport.StreamDialer) *tcpHandler {
-	return &tcpHandler{client}
+func newTCPHandler(client transport.StreamDialer, halfCloseTimeout time.Duration) *tcpHandler {
+	return &tcpHandler{dialer: client, halfCloseTimeout: halfCloseTimeout}
 }
 
 func (h *tcpHandler) Handle(conn net.Conn, target *net.TCPAddr) error {
@@ -47,7 +43,7 @@ func (h *tcpHandler) Handle(conn net.Conn, target *net.TCPAddr) error {
 		return err
 	}
 	// TODO: Request upstream to make `conn` a `core.TCPConn` so we can avoid this type assertion.
-	go relay(conn.(lwip.TCPConn), proxyConn, halfCloseTimeout)
+	go relay(conn.(lwip.TCPConn), proxyConn, h.halfCloseTimeout)
 	return nil
 }
 
